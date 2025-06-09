@@ -75,7 +75,7 @@ const config: PlaywrightTestConfig = {
     },*/
   ],
   /* Run specific files in different workers */
-  workers: 1,
+  workers: 2,
   /* Report outputs folder */
   outputDir: 'playwright-report',
 };
