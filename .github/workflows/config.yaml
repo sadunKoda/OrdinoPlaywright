@@ -1,0 +1,154 @@
+name: Ordino Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  build:
+   runs-on: ubuntu-latest
+   container:
+     image: node:20-alpine
+   steps:
+     - name: Checkout code
+       uses: actions/checkout@v4
+
+     - name: Configure npm cache
+       run: npm config set cache ~/.npm --global
+
+     - name: Cache dependencies
+       uses: actions/cache@v4
+       with:
+         path: |
+           ~/.npm
+           ~/.cache/ms-playwright 
+           node_modules
+         key: build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+     - name: Install dependencies
+       env:
+        ORDINO_KEY: ${{ secrets.ORDINO_KEY != '' && secrets.ORDINO_KEY || env.ORDINO_KEY }}
+       run: npm run initialize --legacy-peer-deps --omit=optional
+
+     - name: Upload workspace
+       uses: actions/upload-artifact@v4
+       with:
+         name: workspace
+         path: |
+           ~/.npm
+           ~/.cache/ms-playwright 
+           node_modules
+
+  run-tests:
+    runs-on: ubuntu-latest
+    needs: build
+    strategy:
+      matrix:
+        shard: [0]
+    container: mcr.microsoft.com/playwright:v1.52.0-jammy
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure npm cache
+        run: npm config set cache ~/.npm --global
+
+      - name: Restore Workspace Cache
+        uses: actions/download-artifact@v4
+        with:
+          name: workspace
+          path: |
+            ~/.npm
+            ~/.cache/ms-playwright
+            node_modules
+
+      - name: Run Playwright Tests
+        env:
+          SPLIT: ${{ strategy.job-total }}
+          SPLIT_INDEX_PLAYWRIGHT: ${{ strategy.job-index }}
+          ORDINO_KEY: ${{ secrets.ORDINO_KEY != '' && secrets.ORDINO_KEY || env.ORDINO_KEY }}
+        run: npm run initialize && npm run oi:run:test
+        continue-on-error: true
+      
+      - name: Ensure report directory exists
+        run: mkdir -p ordino-report/mochawesome
+
+      - name: Upload Ordino Test Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-${{ strategy.job-index }}
+          path: ordino-report/mochawesome/mochawesome.json
+          if-no-files-found: warn
+
+  upload-report:
+    runs-on: ubuntu-latest
+    needs: run-tests
+    container:
+      image: alpine:latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4  
+
+      - name: Copy .env to Container
+        run: |
+          if [ -f .env ]; then
+            echo "Copying .env file to container..."
+            cp .env /root/.env
+          else
+            echo "⚠️ Warning: .env file not found!"
+          fi
+
+      - name: Install curl and required utilities
+        run: apk add --no-cache curl bash
+
+      - name: Load .env file if secrets are missing
+        shell: bash
+        run: |
+          # Default to GitHub secrets if available
+          PROJECT_ID="${{ secrets.PROJECT_ID }}"
+          ORDINO_KEY="${{ secrets.ORDINO_KEY }}"
+
+          # If secrets are empty, try to load from copied .env file
+          if [ -z "$PROJECT_ID" ] || [ -z "$ORDINO_KEY" ]; then
+            if [ -f /root/.env ]; then
+              echo "Loading environment variables from .env file..."
+              
+              # Export valid variables while ignoring empty lines and comments
+              export $(grep -v '^#' /root/.env | grep -v '^\s*$' | sed 's/\r$//' | xargs)
+              
+              # Assign them to GitHub env
+              echo "PROJECT_ID=$PROJECT_ID" >> $GITHUB_ENV
+              echo "ORDINO_KEY=$ORDINO_KEY" >> $GITHUB_ENV
+            else
+              echo "❌ ERROR: .env file is missing!"
+              exit 1
+            fi
+          fi
+
+      - name: Download Report
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-report-0
+          path: ordino-report/mochawesome/
+
+      - name: Upload Report to API
+        run: |
+          API_URL="https://staging.dev-portal.spartify.io/api/v1/test-report-external"
+          BUILD_ID="$GITHUB_RUN_ID"
+          PROJECT_ID="$PROJECT_ID"
+          API_KEY="$ORDINO_KEY"
+          REPORT_PATH="ordino-report/mochawesome/mochawesome.json"
+
+          if [ -z "$PROJECT_ID" ] || [ -z "$API_KEY" ]; then
+            echo "❌ ERROR: Missing PROJECT_ID or ORDINO_KEY"
+            exit 1
+          fi
+
+           curl --location "$API_URL" \
+            --header "Spartify-Key: $API_KEY" \
+            --form "file=@$REPORT_PATH" \
+            --form "ProjectId=$PROJECT_ID" \
+            --form "ExecutionId=$BUILD_ID"

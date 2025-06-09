@@ -1,0 +1,25 @@
+{
+  "name": "ordinoplaywright",
+  "version": "1.0.0",
+  "description": "ordino-pw-test",
+  "scripts": {
+    "initialize": "node ordino.initialize.js --initialize",
+    "oi:run:test": "node ordino.initialize.js --runTest",
+    "oi:open:test": "node ordino.initialize.js --openTest",
+    "oi:ui": "node ordino.initialize.js --ui",
+    "oi:report": "node ordino.initialize.js --report --port=9324",
+    "oi:report:mocha": "node ordino.initialize.js --report-mocha"
+  },
+  "keywords": [
+    "ordino.ai",
+    "ordino-test"
+  ],
+  "author": "@ordino",
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.51.1",
+    "@ordino.ai/ordino-engine": "1.0.0-staging-pw.15",
+    "typescript": "^5.2.2",
+    "dotenv": "^16.4.7"
+  }
+}
