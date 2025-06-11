@@ -1,6 +1,8 @@
 import { test as base } from '@playwright/test';
-import { LoginPage } from '../pages/orangehrm-login.page';
-import { HomePage } from '../pages/orangehrm-dashboard.page';
+import { LoginPage } from '../pages/ordinoLogin.page';
+import { HomePage } from '../pages/ordinoHome.page';
+import { OrdinoSidePanel } from '../pages/panels/ordinoSidePanel';
+
 
 
 
@@ -8,6 +10,7 @@ import { HomePage } from '../pages/orangehrm-dashboard.page';
 type MyFixtures = {
   loginPage: LoginPage;
   homePage: HomePage;
+  sidePanel: OrdinoSidePanel;
 };
 
 // Extend the base test with our fixtures
@@ -21,6 +24,13 @@ export const test = base.extend<MyFixtures>({
     const homePage = new HomePage(page);
     await use(homePage);
   },
+  sidePanel: async ({ page }, use) => {
+    const sidePanel = new OrdinoSidePanel(page);
+    await use(sidePanel);
+  }
+
+
+
 });
 
 // Export the page fixtures
